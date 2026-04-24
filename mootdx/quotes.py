@@ -107,7 +107,7 @@ class BaseQuotes(object):
         ...
 
 
-instance: BaseQuotes
+instance = None
 
 
 def check_empty(value):
@@ -117,10 +117,10 @@ def check_empty(value):
     :param value: 要判断的值
     :return:
     """
-    _empty = value.all().empty if isinstance(value, pd.DataFrame) else not value
+    _empty = value.empty if isinstance(value, pd.DataFrame) else not value
 
     # 判断状态空，则重连接
-    if instance and _empty:
+    if instance is not None and _empty:
         logger.warning('返回数据空, 重新连接服务器...')
         # instance.client.connect(*instance.server)
 
@@ -516,7 +516,7 @@ class ExtQuotes(BaseQuotes):
         super().__init__(bestip=bestip, timeout=timeout, server=server, **kwargs)
         self.server and config.set('BESTIP', {'EX': self.server})
 
-        logger.warning('目前扩展市场行情接口已经失效, 后期有望修复.')
+        logger.info('扩展市场行情接口已启用，部分品种或示例代码可能因市场代码变更而需要更新。')
 
         try:
             config.get('SERVER').get('EX')[0]
