@@ -14,6 +14,7 @@ nav:
     - 标准行情: api/quote1.md
     - 扩展行情: api/quote2.md
     - 扩展行情中国期货实测: api/quote2_futures.md
+    - 扩展行情中国期货主连全量扫描: api/quote2_futures_scan.md
     - 数据读取: api/reader.md
     - 财务数据: api/affair.md
     - 财务对照: api/fields.md
