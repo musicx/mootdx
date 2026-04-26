@@ -17,6 +17,7 @@ from mootdx import config
 from mootdx.consts import MARKET_SH
 from mootdx.consts import MARKET_SZ
 from mootdx.consts import return_last_value
+from mootdx.exceptions import MootdxException
 from mootdx.exceptions import MootdxValidationException
 from mootdx.logger import logger
 from mootdx.server import check_server
@@ -110,6 +111,17 @@ class BaseQuotes(object):
 instance = None
 
 
+def is_empty(value):
+    return value.empty if isinstance(value, pd.DataFrame) else not value
+
+
+def raise_empty_bars(value, symbol):
+    if is_empty(value):
+        raise MootdxException(message=f'bars 返回数据空: {symbol}')
+
+    return value
+
+
 def check_empty(value):
     """
     重试判断函数
@@ -117,7 +129,7 @@ def check_empty(value):
     :param value: 要判断的值
     :return:
     """
-    _empty = value.empty if isinstance(value, pd.DataFrame) else not value
+    _empty = is_empty(value)
 
     # 判断状态空，则重连接
     if instance is not None and _empty:
@@ -185,7 +197,7 @@ class StdQuotes(BaseQuotes):
 
         return to_data(result, symbol=symbol, client=self, **kwargs)
 
-    def bars(self, symbol='000001', frequency=9, start=0, offset=800, **kwargs):
+    def bars(self, symbol='000001', frequency=9, start=0, offset=800, skip_retry=False, **kwargs):
         """
         获取实时日K线数据
 
@@ -193,6 +205,7 @@ class StdQuotes(BaseQuotes):
         :param frequency: 数据频次
         :param start: 开始位置
         :param offset: 每次获取条数
+        :param skip_retry: 跳过空结果重试, 空结果直接抛出异常
         :return: pd.dataFrame or None
         """
         frequency = get_frequency(frequency)
@@ -201,7 +214,12 @@ class StdQuotes(BaseQuotes):
         offset = (offset, 800)[offset > 800]
         result = self.client.get_security_bars(int(frequency), int(market), str(symbol), int(start), int(offset))
 
-        return to_data(result, symbol=symbol, client=self, **kwargs)
+        data = to_data(result, symbol=symbol, client=self, **kwargs)
+
+        if skip_retry:
+            return raise_empty_bars(data, symbol)
+
+        return data
 
     def stock_count(self, market=MARKET_SH):
         """
@@ -700,7 +718,10 @@ class ExtQuotes(BaseQuotes):
         retry_error_callback=return_last_value,
         retry=(retry_if_exception_type() | retry_if_result(check_empty)),
     )
-    def bars(self, frequency='', market='', symbol='', start=0, offset=800, **kwargs):
+    def _bars_retry(self, frequency='', market='', symbol='', start=0, offset=800, **kwargs):
+        return self._bars_once(frequency=frequency, market=market, symbol=symbol, start=start, offset=offset, **kwargs)
+
+    def _bars_once(self, frequency='', market='', symbol='', start=0, offset=800, **kwargs):
         """
         查询k线数据
 
@@ -719,6 +740,25 @@ class ExtQuotes(BaseQuotes):
         )
 
         return to_data(result, symbol=symbol, **kwargs)
+
+    def bars(self, frequency='', market='', symbol='', start=0, offset=800, skip_retry=False, **kwargs):
+        """
+        查询k线数据
+
+        :param frequency: 数据频次, K线周期
+        :param market: 市场ID
+        :param symbol: 证券代码
+        :param start:  起始位置
+        :param offset: 获取数量
+        :param skip_retry: 跳过空结果重试, 空结果直接抛出异常
+        :return:
+        """
+
+        if skip_retry:
+            data = self._bars_once(frequency=frequency, market=market, symbol=symbol, start=start, offset=offset, **kwargs)
+            return raise_empty_bars(data, symbol)
+
+        return self._bars_retry(frequency=frequency, market=market, symbol=symbol, start=start, offset=offset, **kwargs)
 
     @retry(
         wait=wait_random(min=1, max=10),
